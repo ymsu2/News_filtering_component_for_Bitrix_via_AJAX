@@ -33,6 +33,27 @@ if (!$iblockId) {
     exit();
 }
 
+// Функция для проверки существования детальной страницы
+function detailPageExists($detailPageUrl) {
+    if (empty($detailPageUrl) || $detailPageUrl === '#') {
+        return false;
+    }
+    
+    // Извлекаем путь из URL
+    $parsedUrl = parse_url($detailPageUrl);
+    $path = $parsedUrl['path'] ?? '';
+    
+    if (empty($path)) {
+        return false;
+    }
+    
+    // Проверяем существование файла
+    $documentRoot = $_SERVER['DOCUMENT_ROOT'];
+    $filePath = $documentRoot . $path;
+    
+    return file_exists($filePath);
+}
+
 $filter = [
     'IBLOCK_ID' => $iblockId,
     'ACTIVE' => 'Y',
@@ -67,16 +88,6 @@ if ($costTo = $request->getPost('cost_to')) {
     $filter['<=PROPERTY_COST'] = (float)$costTo;
 }
 
-// Детальное логирование
-$logData = [
-    'dateFilter' => $dateFilter,
-    'start' => isset($start) ? $start : null,
-    'end' => isset($end) ? $end : null,
-    'filter' => $filter,
-    'request' => $request->getPostList()->toArray()
-];
-file_put_contents($_SERVER['DOCUMENT_ROOT'].'/filter_debug.log', date('Y-m-d H:i:s') . " - " . print_r($logData, true) . "\n", FILE_APPEND);
-
 // Получаем отфильтрованные элементы
 $rsItems = CIBlockElement::GetList(
     ['DATE_ACTIVE_FROM' => 'DESC'],
@@ -88,18 +99,19 @@ $rsItems = CIBlockElement::GetList(
 
 $items = [];
 while ($item = $rsItems->GetNext()) {
+    // Проверяем, существует ли детальная страница
+    $hasDetail = detailPageExists($item['DETAIL_PAGE_URL']);
+    
     $items[] = [
         'ID' => (string)$item['ID'],
         'NAME' => (string)$item['NAME'],
-        'DATE_ACTIVE_FROM' => (string)$item['DATE_ACTIVE_FROM'], // Для отладки
-        'URL' => (string)$item['DETAIL_PAGE_URL'],
+        'DATE_ACTIVE_FROM' => (string)$item['DATE_ACTIVE_FROM'],
+        'URL' => $hasDetail ? (string)$item['DETAIL_PAGE_URL'] : '',
         'COST' => isset($item['PROPERTY_COST_VALUE']) ? (string)$item['PROPERTY_COST_VALUE'] : '',
         'FEATURE' => isset($item['PROPERTY_FEATURE_VALUE']) ? (string)$item['PROPERTY_FEATURE_VALUE'] : '',
+        'HAS_DETAIL' => $hasDetail,
     ];
 }
-
-// Логируем результат
-file_put_contents($_SERVER['DOCUMENT_ROOT'].'/filter_result.log', date('Y-m-d H:i:s') . " - " . print_r($items, true) . "\n", FILE_APPEND);
 
 echo json_encode($items);
 exit();
